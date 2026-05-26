@@ -58,7 +58,7 @@ def get_board_rankings() -> pd.DataFrame:
 
     result = pd.DataFrame(rows)
     if result.empty: return result
-    result = result.sort_values('博弈评分', ascending=False).head(15).reset_index(drop=True)
+    result = result.sort_values('涨跌幅', ascending=False).head(15).reset_index(drop=True)
     result.index += 1; result.insert(0, '序号', result.index)
     return result
 
