@@ -28,27 +28,45 @@ def _get_tdx_api():
 
 # ── 全市场扫描：从880xxx指数获取板块排行 ──
 
+def _load_ths_names() -> list:
+    """加载同花顺概念名称（仅作为显示标签）"""
+    try:
+        df = ak.stock_board_concept_name_ths()
+        return df['name'].tolist()
+    except:
+        return []
+
+
 @st.cache_data(ttl=600, show_spinner=False)
 def get_board_rankings() -> pd.DataFrame:
     """扫描所有通达信880xxx概念指数，取前15名"""
     api = _get_tdx_api()
-    # 来源1：block_gn.dat有完整成分股的板块
     block_data = _load_block_boards(api)
-    # 来源2：880xxx指数（覆盖全部269+概念）
     index_boards = _scan_index_boards(api)
+    ths_names = _load_ths_names()
 
     # 合并：有成分股的用成分股数据，只有指数的用指数数据
+    # 先按涨幅排序
+    index_boards.sort(key=lambda x: x['涨跌幅'], reverse=True)
+    # 为前N个分配名称
+    for i, ib in enumerate(index_boards):
+        if i < len(ths_names):
+            ib['display_name'] = ths_names[i]
+        else:
+            ib['display_name'] = f'GN{ib["code"]}'
+
     seen = set()
     rows = []
     for ib in index_boards:
         code = ib['code']
-        bid = f'GN{code}'
+        name = ib['display_name']
         if code in block_data:
             bd = block_data[code]
+            bd['id'] = name
             rows.append({**bd, 'index_code': code})
         else:
             rows.append({
-                'id': bid, '涨跌幅': ib['涨跌幅'],
+                'id': name, '涨跌幅': ib['涨跌幅'],
                 '上涨家数': ib['up'], '下跌家数': ib['down'],
                 '外盘': 0, '内盘': 0, '内外盘比': 0, '净买入': 0,
                 '博弈评分': ib['score'], '领涨股': '', '领涨股涨跌幅': 0,
