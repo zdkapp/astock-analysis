@@ -86,33 +86,22 @@ def _scan_index_boards(api):
     boards = []
     for code in range(880500, 881000):
         try:
-            bars = api.get_index_bars(9, 1, str(code), 0, 1)
-            if not bars: continue
-            bar = bars[0]
-            close = bar.get('close', 0); open_ = bar.get('open', 1)
-            chg = (close / open_ - 1) * 100 if open_ > 0 else 0
-            up = bar.get('up_count', 0); down = bar.get('down_count', 0)
+            bars = api.get_index_bars(9, 1, str(code), 0, 2)
+            if not bars or len(bars) < 2: continue
+            today, yesterday = bars[-1], bars[-2]
+            close = today.get('close', 0); prev_close = yesterday.get('close', 1)
+            chg = (close / prev_close - 1) * 100 if prev_close > 0 else 0
+            up = today.get('up_count', 0); down = today.get('down_count', 0)
             total = up + down
             ratio = up / max(down, 1)
             score = chg * 0.5 + (ratio - 1) * 25 + ((up - down) / max(total, 1)) * 25
-            # 尝试取名称
-            name = _get_index_name(str(code))
             boards.append({
                 'code': str(code), '涨跌幅': round(chg, 2),
                 'up': up, 'down': down, 'score': round(max(0, min(100, score)), 1),
-                'name': name,
             })
         except: continue
     return boards
 
-
-def _get_index_name(code: str) -> str:
-    """获取通达信指数名称（从同花顺映射）"""
-    try:
-        df = ak.stock_board_concept_name_ths()
-        # 通过匹配block_gn.dat类型尝试获取名称
-        return ''
-    except: return ''
 
 
 def _load_block_boards(api) -> dict:
@@ -152,7 +141,7 @@ def _build_name_map(api):
 
 def get_concept_boards() -> pd.DataFrame:
     r = get_board_rankings()
-    return pd.DataFrame([{'板块名称': f'GN{r.iloc[i]["index_code"]}' if not r.iloc[i].get('id','').startswith('GN') else r.iloc[i]['id']}
+    return pd.DataFrame([{"板块名称": r.iloc[i].get('id', f'GN{r.iloc[i].get("index_code","")}')}
                          for i in range(len(r))]) if not r.empty else pd.DataFrame()
 
 
