@@ -147,7 +147,7 @@ def page_boards():
     # 统计
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        st.metric("概念板块排行", len(rankings))
+        st.metric("概念板块", len(rankings))
     with c2:
         pos = int((rankings["涨跌幅"] > 0).sum())
         st.metric("上涨板块", pos)
@@ -156,18 +156,6 @@ def page_boards():
     with c4:
         top = rankings.iloc[0]["id"] if len(rankings) > 0 else "-"
         st.metric("最强板块", top)
-
-    # 底部统计
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        st.metric("概念板块", len(ranked))
-    with c2:
-        pos = int((ranked["涨跌幅"] > 0).sum())
-        st.metric("上涨板块", pos)
-    with c3:
-        st.metric("下跌板块", len(ranked) - pos)
-    with c4:
-        st.metric("最强板块", ranked.iloc[0]["板块名称"])
 
 
 # ══════════════════════════════════════════════════
