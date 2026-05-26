@@ -17,8 +17,8 @@ from pytdx.hq import TdxHq_API
 from collections import OrderedDict
 
 
-@st.cache_resource
 def _get_tdx_api():
+    """获取通达信连接（不缓存，每次新建）"""
     api = TdxHq_API()
     for host, port in [('115.238.90.165', 7709), ('218.75.126.170', 7709)]:
         try: api.connect(host, port); return api
@@ -31,8 +31,9 @@ def _get_tdx_api():
 @st.cache_data(ttl=3600)
 def _get_board_data() -> list[dict]:
     """获取板块列表，每个板块包含 {id, name, stocks}"""
-    api = _get_tdx_api()
-    raw = api.get_and_parse_block_info('block_gn.dat')
+    raw = _get_tdx_api().get_and_parse_block_info('block_gn.dat')
+    # 先构建完整的股票名称映射（用于验证代码有效性）
+    valid_codes = set(_build_stock_name_map().keys())
     boards = OrderedDict()
     for item in raw:
         bt = str(item['block_type'])
@@ -41,11 +42,17 @@ def _get_board_data() -> list[dict]:
         if bt not in boards:
             uid = name if has_cn else f"GN{bt}"
             boards[bt] = {'id': uid, 'raw_name': name, 'stocks': []}
-        boards[bt]['stocks'].append(item['code'])
-    # 去重股票，过滤少于5只的
+        # 按\x00分割，取包含6位纯数字的部分（排除market标识）
+        import re as _re
+        for part in item['code'].split('\x00'):
+            digits = _re.sub(r'\D', '', part)
+            if len(digits) == 6:
+                boards[bt]['stocks'].append(digits)
+                break
+    # 去重+交叉验证（只保留真实存在的股票）
     result = []
     for bt, info in boards.items():
-        unique = list(set(info['stocks']))
+        unique = [c for c in set(info['stocks']) if c in valid_codes]
         if len(unique) >= 5:
             result.append({'id': info['id'], 'raw_name': info['raw_name'], 'stocks': unique})
     return result
@@ -61,10 +68,8 @@ def get_concept_boards() -> pd.DataFrame:
 @st.cache_data(ttl=300, show_spinner=False)
 def _get_all_quotes() -> dict:
     api = _get_tdx_api()
-    # 重连确保连接有效
-    try: api.do_heartbeat()
-    except: api.connect(api.client.host, api.client.port)
-    all_codes = list(set(c for b in _get_board_data() for c in b['stocks']))
+    # 每板块取前50只，控制查询总量
+    all_codes = list(set(c for b in _get_board_data() for c in b['stocks'][:50]))
     quotes = {}
     for i in range(0, len(all_codes), 80):
         batch = all_codes[i:i+80]
@@ -88,7 +93,7 @@ def get_board_rankings() -> pd.DataFrame:
     name_map = _build_stock_name_map()
     rows = []
     for b in boards:
-        sq = [quotes.get(c) for c in b['stocks'] if c in quotes and quotes[c]['price']>0]
+        sq = [quotes.get(c) for c in b['stocks'][:50] if c in quotes and quotes[c]['price']>0]
         if not sq: continue
         df = pd.DataFrame(sq)
         up = int((df['change_pct']>0).sum())
