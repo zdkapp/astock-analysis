@@ -1,0 +1,11 @@
+fastapi>=0.100.0
+uvicorn[standard]
+jinja2
+akshare
+pandas
+numpy
+aiosqlite
+databases[sqlite]
+sqlalchemy
+requests
+httpx

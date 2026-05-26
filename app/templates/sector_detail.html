@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}{{ sector.name if sector else '板块详情' }} - A股分析{% endblock %}
+{% block content %}
+{% if sector %}
+<div class="flex flex-wrap gap-4 mb-4">
+    <h1>{{ sector.name }}</h1>
+    <span class="badge {{ 'up' if sector.change_pct > 0 else 'down' }}">{{ "%.2f"|format(sector.change_pct) }}%</span>
+    <a href="/sectors" class="btn btn-sm">← 返回板块列表</a>
+</div>
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="label">上涨家数</div>
+        <div class="value up">{{ sector.up_count }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">下跌家数</div>
+        <div class="value down">{{ sector.down_count }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">领涨股</div>
+        <div class="value" style="font-size:18px;">{{ sector.leader_name or '-' }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">领涨涨幅</div>
+        <div class="value {{ 'up' if (sector.leader_chg or 0) > 0 else 'down' }}">{{ "%.2f"|format(sector.leader_chg or 0) }}%</div>
+    </div>
+</div>
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>代码</th>
+                <th>名称</th>
+                <th>现价</th>
+                <th>涨跌幅</th>
+                <th>涨跌额</th>
+                <th>换手率</th>
+                <th>市盈率</th>
+                <th>市净率</th>
+                <th>总市值(亿)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for st in stocks %}
+            <tr class="{{ 'up-bg' if st.change_pct > 0 else 'down-bg' if st.change_pct < 0 else '' }}">
+                <td>{{ st.code }}</td>
+                <td><a href="/stocks/{{ st.code }}">{{ st.name }}</a></td>
+                <td>{{ "%.2f"|format(st.price) }}</td>
+                <td class="{{ 'up' if (st.change_pct or 0) > 0 else 'down' }}">{{ "%.2f"|format(st.change_pct) }}%</td>
+                <td class="{{ 'up' if (st.change_amount or 0) > 0 else 'down' }}">{{ "%.3f"|format(st.change_amount or 0) }}</td>
+                <td>{{ "%.2f"|format(st.turnover_rate or 0) }}%</td>
+                <td>{{ "%.2f"|format(st.pe or 0) }}</td>
+                <td>{{ "%.2f"|format(st.pb or 0) }}</td>
+                <td>{{ "{:,.0f}".format((st.market_cap or 0) / 1e8) }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="9" style="text-align:center;padding:40px;color:#999;">暂无成分股数据</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="card" style="text-align:center;padding:60px;">
+    <h2>未找到该板块</h2>
+    <p style="color:#999;margin-top:12px;">请返回 <a href="/sectors">板块列表</a> 选择有效板块</p>
+</div>
+{% endif %}
+{% endblock %}

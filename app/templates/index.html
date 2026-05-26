@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}A股分析系统 - 首页{% endblock %}
+{% block content %}
+<h1>A股分析系统</h1>
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="label">行业板块数</div>
+        <div class="value">{{ sector_count if sector_count else '—' }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">今日上涨板块</div>
+        <div class="value up">{{ up_count if up_count else '—' }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">今日下跌板块</div>
+        <div class="value down">{{ down_count if down_count else '—' }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">数据更新</div>
+        <div class="value" style="font-size:14px;">{{ last_update or '未更新' }}</div>
+    </div>
+</div>
+<div class="card">
+    <div class="flex mb-4">
+        <h2>功能入口</h2>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;">
+        <a href="/sectors" style="display:block;padding:20px;background:#f0f0ff;border-radius:8px;text-decoration:none;">
+            <h3 style="margin-bottom:8px;">行业板块</h3>
+            <p style="color:#666;font-size:13px;">查看各行业板块涨跌排行、板块成分股</p>
+        </a>
+        <a href="/screening" style="display:block;padding:20px;background:#fff0f0;border-radius:8px;text-decoration:none;">
+            <h3 style="margin-bottom:8px;">个股筛选</h3>
+            <p style="color:#666;font-size:13px;">按市盈率、市值、涨跌幅等多条件筛选</p>
+        </a>
+        <a href="/stocks/search" style="display:block;padding:20px;background:#f0fff0;border-radius:8px;text-decoration:none;">
+            <h3 style="margin-bottom:8px;">股票搜索</h3>
+            <p style="color:#666;font-size:13px;">搜索个股，查看历史走势和财务数据</p>
+        </a>
+    </div>
+</div>
+{% endblock %}

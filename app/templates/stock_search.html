@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}股票搜索 - A股分析{% endblock %}
+{% block content %}
+<h1>股票搜索</h1>
+<div class="card">
+    <form method="get" class="flex flex-wrap gap-4 mb-4">
+        <input type="text" name="q" class="search-box" placeholder="输入股票代码或名称..." value="{{ query }}">
+        <button type="submit" class="btn">搜索</button>
+    </form>
+    {% if results %}
+    <table>
+        <thead>
+            <tr>
+                <th>代码</th>
+                <th>名称</th>
+                <th>最新价</th>
+                <th>涨跌幅</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for st in results %}
+            <tr>
+                <td>{{ st.code }}</td>
+                <td>{{ st.name }}</td>
+                <td>{{ "%.2f"|format(st.price) }}</td>
+                <td class="{{ 'up' if (st.change_pct or 0) > 0 else 'down' }}">{{ "%.2f"|format(st.change_pct) }}%</td>
+                <td><a href="/stocks/{{ st.code }}" class="btn btn-sm">查看详情</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% elif query and not results %}
+    <p style="text-align:center;padding:40px;color:#999;">未找到匹配结果</p>
+    {% endif %}
+</div>
+{% endblock %}

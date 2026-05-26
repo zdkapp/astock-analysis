@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}{{ stock.name if stock else '个股详情' }} - A股分析{% endblock %}
+{% block extra_head %}
+<script>
+// 简单K线图（使用Canvas绘制）
+function drawKline(canvasId, data) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || !data || data.length === 0) return;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    const pad = { top: 20, bottom: 30, left: 10, right: 10 };
+    const chartW = w - pad.left - pad.right;
+    const chartH = h - pad.top - pad.bottom;
+
+    const prices = data.flatMap(d => [d.high, d.low, d.close, d.open]);
+    const minP = Math.min(...prices), maxP = Math.max(...prices);
+    const range = maxP - minP || 1;
+    const volumes = data.map(d => d.volume);
+    const maxVol = Math.max(...volumes) || 1;
+
+    ctx.clearRect(0, 0, w, h);
+
+    data.forEach((d, i) => {
+        const x = pad.left + (i / data.length) * chartW;
+        const barW = Math.max(1, chartW / data.length * 0.6);
+
+        const yHigh = pad.top + (1 - (d.high - minP) / range) * chartH;
+        const yLow = pad.top + (1 - (d.low - minP) / range) * chartH;
+        const yOpen = pad.top + (1 - (d.open - minP) / range) * chartH;
+        const yClose = pad.top + (1 - (d.close - minP) / range) * chartH;
+
+        const isUp = d.close >= d.open;
+        ctx.strokeStyle = isUp ? '#e74c3c' : '#27ae60';
+        ctx.fillStyle = isUp ? '#e74c3c' : '#27ae60';
+
+        // 影线
+        ctx.beginPath();
+        ctx.moveTo(x + barW/2, yHigh);
+        ctx.lineTo(x + barW/2, yLow);
+        ctx.stroke();
+
+        // 实体
+        const yTop = Math.min(yOpen, yClose);
+        const yBot = Math.max(yOpen, yClose);
+        const barH = Math.max(1, yBot - yTop);
+        ctx.fillRect(x, yTop, barW, barH);
+
+        // 成交量（底部灰色柱）
+        const volH = (d.volume / maxVol) * 30;
+        ctx.fillStyle = isUp ? 'rgba(231,76,60,0.3)' : 'rgba(39,174,96,0.3)';
+        ctx.fillRect(x, h - pad.bottom - volH, barW, volH);
+    });
+
+    // Y轴价格标签
+    ctx.fillStyle = '#999';
+    ctx.font = '10px sans-serif';
+    for (let i = 0; i <= 4; i++) {
+        const p = minP + (range * i / 4);
+        const y = pad.top + (1 - i/4) * chartH;
+        ctx.fillText(p.toFixed(2), 0, y + 3);
+    }
+}
+</script>
+{% endblock %}
+{% block content %}
+{% if stock %}
+<div class="flex flex-wrap gap-4 mb-4">
+    <h1>{{ stock.name }} <span style="font-size:14px;color:#999;">{{ stock.code }}</span></h1>
+    <span class="badge {{ 'up' if (stock.change_pct or 0) > 0 else 'down' }}" style="font-size:16px;padding:4px 16px;">
+        {{ "%.2f"|format(stock.change_pct) }}%
+    </span>
+    <a href="/stocks/{{ stock.code }}/refresh" class="btn btn-sm">刷新行情</a>
+</div>
+<div class="stats-grid" style="margin-bottom:20px;">
+    <div class="stat-card"><div class="label">最新价</div><div class="value">{{ "%.2f"|format(stock.price) }}</div></div>
+    <div class="stat-card"><div class="label">涨跌额</div><div class="value {{ 'up' if (stock.change_amount or 0) > 0 else 'down' }}">{{ "%.3f"|format(stock.change_amount or 0) }}</div></div>
+    <div class="stat-card"><div class="label">市盈率(动态)</div><div class="value">{{ "%.2f"|format(stock.pe or 0) }}</div></div>
+    <div class="stat-card"><div class="label">市净率</div><div class="value">{{ "%.2f"|format(stock.pb or 0) }}</div></div>
+    <div class="stat-card"><div class="label">换手率</div><div class="value">{{ "%.2f"|format(stock.turnover_rate or 0) }}%</div></div>
+    <div class="stat-card"><div class="label">总市值</div><div class="value" style="font-size:18px;">{{ "{:,.0f}".format((stock.market_cap or 0) / 1e8) }}亿</div></div>
+</div>
+<div class="card">
+    <h2>K线走势</h2>
+    <canvas id="klineCanvas" width="900" height="400"></canvas>
+    <script>
+        const klineData = {{ kline | tojson | safe }};
+        window.onload = function() { drawKline('klineCanvas', klineData); };
+    </script>
+</div>
+<div class="card mt-4">
+    <h2>近期行情</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>日期</th>
+                <th>开盘</th>
+                <th>最高</th>
+                <th>最低</th>
+                <th>收盘</th>
+                <th>涨跌幅</th>
+                <th>成交量</th>
+                <th>成交额</th>
+                <th>换手率</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for d in dailies | reverse %}
+            <tr class="{{ 'up-bg' if d.change_pct_daily > 0 else 'down-bg' if d.change_pct_daily < 0 else '' }}">
+                <td>{{ d.date }}</td>
+                <td>{{ "%.2f"|format(d.open) }}</td>
+                <td>{{ "%.2f"|format(d.high) }}</td>
+                <td>{{ "%.2f"|format(d.low) }}</td>
+                <td>{{ "%.2f"|format(d.close) }}</td>
+                <td class="{{ 'up' if d.change_pct_daily > 0 else 'down' }}">{{ "%.2f"|format(d.change_pct_daily) }}%</td>
+                <td>{{ "{:,.0f}".format(d.volume / 100) }}</td>
+                <td>{{ "{:,.0f}".format(d.amount / 10000) }}</td>
+                <td>{{ "%.2f"|format(d.turnover_rate_daily or 0) }}%</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="9" style="text-align:center;padding:40px;color:#999;">暂无历史数据，点击"刷新行情"获取</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="card" style="text-align:center;padding:60px;">
+    <h2>未找到该股票</h2>
+    <p style="color:#999;margin-top:12px;">请通过 <a href="/stocks/search">股票搜索</a> 查找</p>
+</div>
+{% endif %}
+{% endblock %}

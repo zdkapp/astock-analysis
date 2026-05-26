@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}A股分析系统{% endblock %}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; color: #333; }
+        .navbar { background: #1a1a2e; color: white; padding: 0 24px; display: flex; align-items: center; height: 56px; }
+        .navbar a { color: white; text-decoration: none; padding: 16px 16px; font-size: 14px; }
+        .navbar a:hover { background: rgba(255,255,255,0.1); }
+        .navbar .brand { font-size: 18px; font-weight: bold; margin-right: 24px; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px 24px; }
+        .card { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 20px; margin-bottom: 16px; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th, td { padding: 8px 12px; text-align: right; border-bottom: 1px solid #eee; }
+        th { background: #fafafa; font-weight: 600; color: #666; font-size: 12px; }
+        tr:hover { background: #f8f9ff; }
+        td:first-child, th:first-child { text-align: left; }
+        .up { color: #e74c3c; }
+        .down { color: #27ae60; }
+        .up-bg { background: #fee; }
+        .down-bg { background: #efe; }
+        .btn { display: inline-block; padding: 8px 20px; background: #1a1a2e; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; text-decoration: none; }
+        .btn:hover { opacity: 0.85; }
+        .btn-sm { padding: 4px 12px; font-size: 12px; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+        .badge.up { background: #fee; }
+        .badge.down { background: #efe; }
+        .search-box { padding: 10px 16px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; width: 300px; }
+        .text-left { text-align: left; }
+        .text-right { text-align: right; }
+        .text-center { text-align: center; }
+        h1 { font-size: 22px; margin-bottom: 16px; }
+        h2 { font-size: 18px; margin-bottom: 12px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 20px; }
+        .stat-card { background: white; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .stat-card .label { font-size: 12px; color: #999; }
+        .stat-card .value { font-size: 24px; font-weight: bold; margin-top: 4px; }
+        .mt-4 { margin-top: 16px; }
+        .mb-4 { margin-bottom: 16px; }
+        .flex { display: flex; align-items: center; gap: 8px; }
+        .flex-wrap { flex-wrap: wrap; }
+        .gap-4 { gap: 16px; }
+        a { color: #1a1a2e; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .tag { display: inline-block; padding: 4px 10px; background: #f0f0f5; border-radius: 4px; font-size: 12px; margin: 2px; }
+        .nav-active { background: rgba(255,255,255,0.15); }
+    </style>
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <nav class="navbar">
+        <a href="/" class="brand">A股分析</a>
+        <a href="/sectors" class="{{ 'nav-active' if request.url.path.startswith('/sectors') }}">行业板块</a>
+        <a href="/screening" class="{{ 'nav-active' if request.url.path.startswith('/screening') }}">个股筛选</a>
+        <a href="/stocks/search">股票搜索</a>
+    </nav>
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+</body>
+</html>

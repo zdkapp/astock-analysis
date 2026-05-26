@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}行业板块 - A股分析{% endblock %}
+{% block content %}
+<div class="flex flex-wrap gap-4 mb-4">
+    <h1>行业板块</h1>
+    <a href="/sectors/refresh" class="btn btn-sm" onclick="alert('正在刷新板块数据...')">刷新数据</a>
+</div>
+{% if last_update %}
+<div style="font-size:12px;color:#999;margin-bottom:12px;">数据更新于: {{ last_update }}</div>
+{% endif %}
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>板块名称</th>
+                <th>涨跌幅</th>
+                <th>上涨家数</th>
+                <th>下跌家数</th>
+                <th>领涨股</th>
+                <th>领涨股涨幅</th>
+                <th>总市值(亿)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in sectors %}
+            <tr class="{{ 'up-bg' if s.change_pct > 0 else 'down-bg' if s.change_pct < 0 else '' }}">
+                <td><a href="/sectors/{{ s.name | urlencode }}">{{ s.name }}</a></td>
+                <td class="{{ 'up' if s.change_pct > 0 else 'down' }}">{{ "%.2f"|format(s.change_pct) }}%</td>
+                <td class="up">{{ s.up_count }}</td>
+                <td class="down">{{ s.down_count }}</td>
+                <td class="text-left">{{ s.leader_name or '-' }}</td>
+                <td class="{{ 'up' if (s.leader_chg or 0) > 0 else 'down' }}">{{ "%.2f"|format(s.leader_chg or 0) }}%</td>
+                <td>{{ "{:,.0f}".format((s.total_market_cap or 0) / 1e8) }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" style="text-align:center;padding:40px;color:#999;">暂无数据，请先 <a href="/sectors/refresh">刷新板块数据</a></td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
