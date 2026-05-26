@@ -95,7 +95,7 @@ def nav_back(target, label="← 返回"):
 #  页面1：板块全景扫描
 # ══════════════════════════════════════════════════
 def page_boards():
-    st.markdown('<div class="main-header">通达信概念板块博弈全景</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">通达信概念板块博弈前15</div>', unsafe_allow_html=True)
 
     rankings = _cached_rankings()
 
@@ -103,24 +103,24 @@ def page_boards():
         st.warning("暂无数据（非交易时段或数据加载中）")
         return
 
-    # 格式化显示
+    # 显示用名称列（id作为板块名称）
     display = rankings.copy()
+    display["板块"] = display["id"]
     display["涨跌幅"] = display["涨跌幅"].apply(lambda x: f"{x:+.2f}%")
-    display["外盘"] = display["外盘"].apply(fmt_num)
-    display["内盘"] = display["内盘"].apply(fmt_num)
-    display["净买入"] = display["净买入"].apply(fmt_num)
-    display["领涨股涨跌幅"] = display["领涨股涨跌幅"].apply(lambda x: f"{x:+.2f}%")
-
-    search = st.text_input("搜索板块", placeholder="输入板块名称关键字...", label_visibility="collapsed")
-    if search:
-        mask = display["板块名称"].str.contains(search, na=False)
-        display = display[mask]
+    if "外盘" in display.columns:
+        display["外盘"] = display["外盘"].apply(fmt_num)
+    if "内盘" in display.columns:
+        display["内盘"] = display["内盘"].apply(fmt_num)
+    if "净买入" in display.columns:
+        display["净买入"] = display["净买入"].apply(fmt_num)
+    if "领涨股涨跌幅" in display.columns:
+        display["领涨股涨跌幅"] = display["领涨股涨跌幅"].apply(lambda x: f"{x:+.2f}%")
 
     sel = st.dataframe(
         display,
         column_config={
             "序号": st.column_config.Column("序号", width=50),
-            "板块名称": st.column_config.Column("板块名称", width=160),
+            "板块": st.column_config.Column("板块", width=160),
             "涨跌幅": st.column_config.Column("涨跌幅", width=80),
             "上涨家数": st.column_config.Column("上涨", width=55),
             "下跌家数": st.column_config.Column("下跌", width=55),
@@ -138,23 +138,23 @@ def page_boards():
 
     if sel and sel.selection and sel.selection.rows:
         idx = sel.selection.rows[0]
-        board = rankings.iloc[idx]["板块名称"]
-        if board:
-            st.session_state.current_board = board
+        board_id = rankings.iloc[idx]["id"]
+        if board_id:
+            st.session_state.current_board = board_id
             st.session_state.page = "board_detail"
             st.rerun()
 
     # 统计
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        st.metric("概念板块", len(rankings))
+        st.metric("概念板块排行", len(rankings))
     with c2:
         pos = int((rankings["涨跌幅"] > 0).sum())
         st.metric("上涨板块", pos)
     with c3:
         st.metric("下跌板块", len(rankings) - pos)
     with c4:
-        top = rankings.iloc[0]["板块名称"] if len(rankings) > 0 else "-"
+        top = rankings.iloc[0]["id"] if len(rankings) > 0 else "-"
         st.metric("最强板块", top)
 
     # 底部统计
@@ -249,7 +249,7 @@ def page_board_detail():
                 st.session_state.page = "stock_detail"
                 st.rerun()
     else:
-        st.info("暂无成分股数据")
+        st.info("暂无成分股数据（该板块仅有指数数据）")
 
 
 # ══════════════════════════════════════════════════

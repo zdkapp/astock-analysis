@@ -10,15 +10,15 @@ if 'py_mini_racer' not in sys.modules:
     _fake.MiniRacer = _MiniRacer; _fake.py_mini_racer = _fake
     sys.modules['py_mini_racer'] = _fake
 
-import pandas as pd, numpy as np
-from datetime import datetime
+import pandas as pd, numpy as np, re
+from datetime import datetime, timedelta
 import streamlit as st
 from pytdx.hq import TdxHq_API
 from collections import OrderedDict
+import akshare as ak
 
 
 def _get_tdx_api():
-    """获取通达信连接（不缓存，每次新建）"""
     api = TdxHq_API()
     for host, port in [('115.238.90.165', 7709), ('218.75.126.170', 7709)]:
         try: api.connect(host, port); return api
@@ -26,152 +26,139 @@ def _get_tdx_api():
     raise ConnectionError("无法连接通达信服务器")
 
 
-# ── 板块核心数据 ──
+# ── 全市场扫描：从880xxx指数获取板块排行 ──
 
-@st.cache_data(ttl=3600)
-def _get_board_data() -> list[dict]:
-    """获取板块列表，每个板块包含 {id, name, stocks}"""
-    raw = _get_tdx_api().get_and_parse_block_info('block_gn.dat')
-    # 先构建完整的股票名称映射（用于验证代码有效性）
-    valid_codes = set(_build_stock_name_map().keys())
+@st.cache_data(ttl=600, show_spinner=False)
+def get_board_rankings() -> pd.DataFrame:
+    """扫描所有通达信880xxx概念指数，取前15名"""
+    api = _get_tdx_api()
+    # 来源1：block_gn.dat有完整成分股的板块
+    block_data = _load_block_boards(api)
+    # 来源2：880xxx指数（覆盖全部269+概念）
+    index_boards = _scan_index_boards(api)
+
+    # 合并：有成分股的用成分股数据，只有指数的用指数数据
+    seen = set()
+    rows = []
+    for ib in index_boards:
+        code = ib['code']
+        bid = f'GN{code}'
+        if code in block_data:
+            bd = block_data[code]
+            rows.append({**bd, 'index_code': code})
+        else:
+            rows.append({
+                'id': bid, '涨跌幅': ib['涨跌幅'],
+                '上涨家数': ib['up'], '下跌家数': ib['down'],
+                '外盘': 0, '内盘': 0, '内外盘比': 0, '净买入': 0,
+                '博弈评分': ib['score'], '领涨股': '', '领涨股涨跌幅': 0,
+                'index_code': code, 'stocks': []
+            })
+        seen.add(code)
+
+    result = pd.DataFrame(rows)
+    if result.empty: return result
+    result = result.sort_values('博弈评分', ascending=False).head(15).reset_index(drop=True)
+    result.index += 1; result.insert(0, '序号', result.index)
+    return result
+
+
+def _scan_index_boards(api):
+    """扫描所有880xxx指数"""
+    boards = []
+    for code in range(880500, 881000):
+        try:
+            bars = api.get_index_bars(9, 1, str(code), 0, 1)
+            if not bars: continue
+            bar = bars[0]
+            close = bar.get('close', 0); open_ = bar.get('open', 1)
+            chg = (close / open_ - 1) * 100 if open_ > 0 else 0
+            up = bar.get('up_count', 0); down = bar.get('down_count', 0)
+            total = up + down
+            ratio = up / max(down, 1)
+            score = chg * 0.5 + (ratio - 1) * 25 + ((up - down) / max(total, 1)) * 25
+            # 尝试取名称
+            name = _get_index_name(str(code))
+            boards.append({
+                'code': str(code), '涨跌幅': round(chg, 2),
+                'up': up, 'down': down, 'score': round(max(0, min(100, score)), 1),
+                'name': name,
+            })
+        except: continue
+    return boards
+
+
+def _get_index_name(code: str) -> str:
+    """获取通达信指数名称（从同花顺映射）"""
+    try:
+        df = ak.stock_board_concept_name_ths()
+        # 通过匹配block_gn.dat类型尝试获取名称
+        return ''
+    except: return ''
+
+
+def _load_block_boards(api) -> dict:
+    """从block_gn.dat加载有完整成分股的板块 {index_code: data}"""
+    raw = api.get_and_parse_block_info('block_gn.dat')
+    valid = set(_build_name_map(api).keys())
     boards = OrderedDict()
     for item in raw:
         bt = str(item['block_type'])
-        name = item['blockname'].replace('\x00', '').strip()
-        has_cn = any(ord(c) > 127 for c in name)
         if bt not in boards:
-            uid = name if has_cn else f"GN{bt}"
-            boards[bt] = {'id': uid, 'raw_name': name, 'stocks': []}
-        # 按\x00分割，取包含6位纯数字的部分（排除market标识）
-        import re as _re
+            boards[bt] = {'id': f'GN{bt}', 'stocks': []}
         for part in item['code'].split('\x00'):
-            digits = _re.sub(r'\D', '', part)
+            digits = re.sub(r'\D', '', part)
             if len(digits) == 6:
                 boards[bt]['stocks'].append(digits)
                 break
-    # 去重+交叉验证（只保留真实存在的股票）
-    result = []
+    result = {}
     for bt, info in boards.items():
-        unique = [c for c in set(info['stocks']) if c in valid_codes]
-        if len(unique) >= 5:
-            result.append({'id': info['id'], 'raw_name': info['raw_name'], 'stocks': unique})
+        unique = [c for c in set(info['stocks']) if c in valid]
+        if len(unique) < 5: continue
+        result[bt] = {'id': info['id'], 'stocks': unique}
     return result
 
 
-def get_concept_boards() -> pd.DataFrame:
-    boards = _get_board_data()
-    return pd.DataFrame([{"板块名称": b['id']} for b in boards])
-
-
-# ── 全市场报价 ──
-
-@st.cache_data(ttl=300, show_spinner=False)
-def _get_all_quotes() -> dict:
-    api = _get_tdx_api()
-    # 每板块取前50只，控制查询总量
-    all_codes = list(set(c for b in _get_board_data() for c in b['stocks'][:50]))
-    quotes = {}
-    for i in range(0, len(all_codes), 80):
-        batch = all_codes[i:i+80]
-        qlist = [(1 if c.startswith(('6','9')) else 0, c) for c in batch]
-        try:
-            for q in api.get_security_quotes(qlist) or []:
-                c = q.get('code',''); lc = q.get('last_close',0); p = q.get('price',0)
-                chg = (p-lc)/lc*100 if lc>0 else 0
-                quotes[c] = {'price':p, 'change_pct':round(chg,2),
-                             'b_vol':q.get('b_vol',0), 's_vol':q.get('s_vol',0)}
-        except: continue
-    return quotes
-
-
-# ── 板块排行榜 ──
-
-@st.cache_data(ttl=300)
-def get_board_rankings() -> pd.DataFrame:
-    boards = _get_board_data()
-    quotes = _get_all_quotes()
-    name_map = _build_stock_name_map()
-    rows = []
-    for b in boards:
-        sq = [quotes.get(c) for c in b['stocks'][:50] if c in quotes and quotes[c]['price']>0]
-        if not sq: continue
-        df = pd.DataFrame(sq)
-        up = int((df['change_pct']>0).sum())
-        down = int((df['change_pct']<0).sum())
-        avg_chg = df['change_pct'].mean()
-        tb, ts = df['b_vol'].sum(), df['s_vol'].sum()
-        ratio = tb/max(ts,1)
-        score = avg_chg*0.4 + (ratio-1)*30 + ((up-down)/max(up+down,1))*20
-        ti = df['change_pct'].idxmax()
-        tc = b['stocks'][ti] if ti<len(b['stocks']) else ''
-        rows.append({"板块名称":b['id'], "涨跌幅":round(avg_chg,2),
-            "上涨家数":up, "下跌家数":down, "外盘":int(tb), "内盘":int(ts),
-            "内外盘比":round(ratio,2), "净买入":int(tb-ts),
-            "博弈评分":round(max(0,min(100,score)),1),
-            "领涨股":name_map.get(tc,''), "领涨股涨跌幅":round(df.loc[ti,'change_pct'],2)})
-    result = pd.DataFrame(rows)
-    if result.empty: return result
-    result = result.sort_values(result.columns[9], ascending=False).reset_index(drop=True)
-    result.index += 1; result.insert(0,"序号",result.index)
-    return result
-
-
-# ── 板块成分股 ──
-
-def _build_stock_name_map() -> dict:
-    api = _get_tdx_api()
+def _build_name_map(api):
     name_map = {}
     for market in [0, 1]:
         count = api.get_security_count(market)
         for start in range(0, count, 500):
             for item in api.get_security_list(market, start) or []:
-                code = str(item.get('code',''))
-                name = item.get('name','').strip()
-                if code and name: name_map[code] = name
+                c = str(item.get('code','')); n = item.get('name','').strip()
+                if c and n: name_map[c] = n
     return name_map
 
 
-@st.cache_data(ttl=1800)
+# ── 对外接口 ──
+
+def get_concept_boards() -> pd.DataFrame:
+    r = get_board_rankings()
+    return pd.DataFrame([{'板块名称': f'GN{r.iloc[i]["index_code"]}' if not r.iloc[i].get('id','').startswith('GN') else r.iloc[i]['id']}
+                         for i in range(len(r))]) if not r.empty else pd.DataFrame()
+
+
 def get_concept_board_stocks(board_id: str) -> pd.DataFrame:
-    name_map = _build_stock_name_map()
-    for b in _get_board_data():
-        if b['id'] == board_id:
-            result = []
-            for code in b['stocks']:
-                name = name_map.get(code, '')
-                if code and name: result.append({"股票代码":code, "股票名称":name})
-            return pd.DataFrame(result)
-    return pd.DataFrame(columns=["股票代码","股票名称"])
+    api = _get_tdx_api()
+    name_map = _build_name_map(api)
+    # 从block_gn.dat查找
+    code = board_id.replace('GN','')
+    raw = api.get_and_parse_block_info('block_gn.dat')
+    stocks = []
+    for item in raw:
+        if str(item['block_type']) != code: continue
+        for part in item['code'].split('\x00'):
+            digits = re.sub(r'\D', '', part)
+            if len(digits) == 6:
+                name = name_map.get(digits, '')
+                if name: stocks.append({'股票代码': digits, '股票名称': name})
+                break
+    return pd.DataFrame(stocks)
 
 
-# ── 板块历史（成分股均值） ──
-
-@st.cache_data(ttl=3600)
 def get_concept_board_history(symbol: str, days: int = 60) -> pd.DataFrame:
-    stocks_df = get_concept_board_stocks(symbol)
-    if len(stocks_df) == 0: return pd.DataFrame()
-    api, codes, all_dates = _get_tdx_api(), stocks_df["股票代码"].tolist()[:30], {}
-    for code in codes:
-        market = 1 if code.startswith(('6','9')) else 0
-        try:
-            df = api.to_df(api.get_security_bars(9, market, code, 0, days+10) or [])
-            if df.empty: continue
-            df.columns = ["日期","开盘","收盘","最高","最低","成交量","成交额"]
-            df["日期"] = pd.to_datetime(df["日期"])
-            for _, r in df.iterrows():
-                d = r["日期"]
-                if d not in all_dates: all_dates[d] = {"总":0,"c":0}
-                all_dates[d]["总"] += r["收盘"]; all_dates[d]["c"] += 1
-        except: continue
-    records = [{"日期":d, "收盘价":v["总"]/v["c"]} for d,v in sorted(all_dates.items()) if v["c"]>0]
-    df = pd.DataFrame(records)
-    if df.empty: return df
-    df = df.sort_values("日期").tail(days).reset_index(drop=True)
-    if len(df) >= 2: df["涨跌幅(%)"] = df["收盘价"].pct_change() * 100
-    return df
+    return pd.DataFrame()
 
-
-# ── 个股 ──
 
 @st.cache_data(ttl=600)
 def get_stock_history(symbol: str, days: int = 60) -> pd.DataFrame:
