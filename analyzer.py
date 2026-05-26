@@ -34,12 +34,19 @@ def rank_boards_by_flow(df: pd.DataFrame) -> pd.DataFrame:
             scores += (result["涨跌幅"] - pct_min) / (pct_max - pct_min) * 40
 
     if "主力净流入" in result.columns:
-        denom = result["主力净流入"].abs() + result["中单净流入"].abs() + result["小单净流入"].abs() + 0.01
+        # 主力强度: 主力净流入 / (主力绝对值 + 散户绝对值)
+        denom = result["主力净流入"].abs() + result["中单净流入"].abs()
+        if "小单净流入" in result.columns:
+            denom += result["小单净流入"].abs()
+        denom += 0.01
         result["主力强度"] = result["主力净流入"] / denom
         scores += result["主力强度"].rank(pct=True) * 30
 
     if "超大单净流入" in result.columns:
-        denom = result[["超大单净流入", "大单净流入", "中单净流入", "小单净流入"]].abs().sum(axis=1) + 0.01
+        cols_pool = ["超大单净流入", "大单净流入", "中单净流入"]
+        if "小单净流入" in result.columns:
+            cols_pool.append("小单净流入")
+        denom = result[cols_pool].abs().sum(axis=1) + 0.01
         result["超大单强度"] = result["超大单净流入"] / denom
         scores += result["超大单强度"].rank(pct=True) * 30
 
