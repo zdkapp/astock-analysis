@@ -9,13 +9,13 @@ from plotly.subplots import make_subplots
 from data_fetcher import (
     get_concept_boards,
     get_concept_board_history,
-    get_concept_fund_flow,
+    get_board_rankings,
     get_concept_board_stocks,
     get_stock_history,
     get_stock_fund_flow,
 )
 from database import init_db
-from analyzer import rank_boards_by_flow, estimate_chip_distribution, get_board_market_sentiment
+from analyzer import estimate_chip_distribution, get_board_market_sentiment
 
 st.set_page_config(page_title="A股资金博弈分析", layout="wide", initial_sidebar_state="collapsed")
 
@@ -45,9 +45,9 @@ def init_session():
 def _cached_boards():
     return get_concept_boards()
 
-@st.cache_data(ttl=1800)
-def _cached_flow(period):
-    return get_concept_fund_flow(period)
+@st.cache_data(ttl=300)
+def _cached_rankings():
+    return get_board_rankings()
 
 @st.cache_data(ttl=3600)
 def _cached_board_hist(name, days=60):
@@ -95,96 +95,67 @@ def nav_back(target, label="← 返回"):
 #  页面1：板块全景扫描
 # ══════════════════════════════════════════════════
 def page_boards():
-    st.markdown('<div class="main-header">板块资金博弈全景扫描</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">通达信概念板块博弈全景</div>', unsafe_allow_html=True)
 
-    period_map = {"今日": "即时", "近3日": "3日排行", "近5日": "5日排行",
-                  "近10日": "10日排行", "近20日": "20日排行"}
-    period = st.segmented_control("周期", list(period_map.keys()),
-                                   default="今日", label_visibility="collapsed",
-                                   key="per")
-    flow = _cached_flow(period_map[period])
+    rankings = _cached_rankings()
 
-    if flow is None or len(flow) == 0:
-        st.warning("暂无数据")
+    if rankings is None or len(rankings) == 0:
+        st.warning("暂无数据（非交易时段或数据加载中）")
         return
 
-    ranked = rank_boards_by_flow(flow)
+    # 格式化显示
+    display = rankings.copy()
+    display["涨跌幅"] = display["涨跌幅"].apply(lambda x: f"{x:+.2f}%")
+    display["外盘"] = display["外盘"].apply(fmt_num)
+    display["内盘"] = display["内盘"].apply(fmt_num)
+    display["净买入"] = display["净买入"].apply(fmt_num)
+    display["领涨股涨跌幅"] = display["领涨股涨跌幅"].apply(lambda x: f"{x:+.2f}%")
 
-    # 动态选择可用列
-    cols_present = [c for c in ["序号", "板块名称", "涨跌幅", "主力净流入",
-                   "超大单净流入", "综合评分", "领涨股", "领涨股涨跌幅"] if c in ranked.columns]
-    display = ranked[cols_present].copy()
-    if "涨跌幅" in display.columns:
-        display["涨跌幅"] = display["涨跌幅"].apply(lambda x: f"{x:+.2f}%")
-    if "主力净流入" in display.columns:
-        display["主力净流入"] = display["主力净流入"].apply(fmt_num)
-    if "超大单净流入" in display.columns:
-        display["超大单净流入"] = display["超大单净流入"].apply(fmt_num)
-    if "领涨股涨跌幅" in display.columns:
-        display["领涨股涨跌幅"] = display["领涨股涨跌幅"].apply(lambda x: f"{x:+.2f}%")
-    if "综合评分" in display.columns:
-        display["综合评分"] = display["综合评分"].apply(lambda x: f"{x:.1f}")
+    search = st.text_input("搜索板块", placeholder="输入板块名称关键字...", label_visibility="collapsed")
+    if search:
+        mask = display["板块名称"].str.contains(search, na=False)
+        display = display[mask]
 
-    # 获取通达信板块列表
-    tx_boards = _cached_boards()
+    sel = st.dataframe(
+        display,
+        column_config={
+            "序号": st.column_config.Column("序号", width=50),
+            "板块名称": st.column_config.Column("板块名称", width=160),
+            "涨跌幅": st.column_config.Column("涨跌幅", width=80),
+            "上涨家数": st.column_config.Column("上涨", width=55),
+            "下跌家数": st.column_config.Column("下跌", width=55),
+            "外盘": st.column_config.Column("外盘(买)", width=100),
+            "内盘": st.column_config.Column("内盘(卖)", width=100),
+            "内外盘比": st.column_config.Column("买卖比", width=70),
+            "净买入": st.column_config.Column("净买入", width=100),
+            "博弈评分": st.column_config.Column("博弈评分", width=80),
+            "领涨股": st.column_config.Column("领涨股", width=120),
+            "领涨股涨跌幅": st.column_config.Column("领涨涨幅", width=90),
+        },
+        use_container_width=True, hide_index=True, height=700,
+        on_select="rerun", selection_mode="single-row",
+    )
 
-    # 创建两个标签页
-    tab1, tab2 = st.tabs(["通达信概念板块", "资金流向排行"])
+    if sel and sel.selection and sel.selection.rows:
+        idx = sel.selection.rows[0]
+        board = rankings.iloc[idx]["板块名称"]
+        if board:
+            st.session_state.current_board = board
+            st.session_state.page = "board_detail"
+            st.rerun()
 
-    with tab1:
-        st.markdown(f"共 **{len(tx_boards)}** 个通达信概念板块")
-        # 搜索框
-        search = st.text_input("搜索板块", placeholder="输入板块名称关键字...", label_visibility="collapsed")
-        filtered = tx_boards
-        if search:
-            mask = tx_boards["板块名称"].str.contains(search, na=False)
-            filtered = tx_boards[mask]
-
-        event1 = st.dataframe(
-            filtered,
-            column_config={
-                "板块名称": st.column_config.Column("板块名称", width=300),
-            },
-            use_container_width=True, hide_index=True, height=600,
-            on_select="rerun", selection_mode="single-row",
-        )
-
-        if event1 and event1.selection and event1.selection.rows:
-            idx = event1.selection.rows[0]
-            board = filtered.iloc[idx]["板块名称"]
-            if board:
-                st.session_state.current_board = board
-                st.session_state.page = "board_detail"
-                st.rerun()
-
-    with tab2:
-        sel2 = st.dataframe(
-            display,
-            column_config={
-                "序号": st.column_config.Column("序号", width=50),
-                "板块名称": st.column_config.Column("板块名称", width=180),
-                "涨跌幅": st.column_config.Column("涨跌幅", width=90),
-                "主力净流入": st.column_config.Column("主力净流入", width=110),
-                "超大单净流入": st.column_config.Column("超大单净流入", width=110),
-                "综合评分": st.column_config.Column("博弈评分", width=90),
-                "领涨股": st.column_config.Column("领涨股", width=120),
-                "领涨股涨跌幅": st.column_config.Column("领涨股涨幅", width=100),
-            },
-            use_container_width=True, hide_index=True, height=600,
-            on_select="rerun", selection_mode="single-row",
-        )
-
-        if sel2 and sel2.selection and sel2.selection.rows:
-            idx = sel2.selection.rows[0]
-            ths_name = ranked.iloc[idx]["板块名称"]
-            # 尝试匹配通达信板块名称
-            match = tx_boards[tx_boards["板块名称"] == ths_name]
-            if len(match) > 0:
-                st.session_state.current_board = ths_name
-                st.session_state.page = "board_detail"
-                st.rerun()
-            else:
-                st.toast(f"'{ths_name}' 仅在资金流数据中可用，通达信无此概念板块", icon="⚠️")
+    # 统计
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.metric("概念板块", len(rankings))
+    with c2:
+        pos = int((rankings["涨跌幅"] > 0).sum())
+        st.metric("上涨板块", pos)
+    with c3:
+        st.metric("下跌板块", len(rankings) - pos)
+    with c4:
+        top = rankings.iloc[0]["板块名称"] if len(rankings) > 0 else "-"
+        st.metric("最强板块", top)
 
     # 底部统计
     c1, c2, c3, c4 = st.columns(4)
